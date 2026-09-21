@@ -1,0 +1,11 @@
+{
+  "params_meta": {
+    "mri_pattern": "([A-Z]{2}[0-9]{2})_MR.nii",
+    "pet_pattern": "([A-Z]{2}[0-9]{2})_PiB_5070.nii",
+    "organize_files_by": "participant"
+  },
+  "params_coregister": {},
+  "params_segmentation": {},
+  "params_normalization": {},
+  "params_centiloid": {}
+}

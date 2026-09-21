@@ -1,0 +1,11 @@
+{
+  "[r]": {
+    "editor.defaultFormatter": "Posit.air-vscode"
+  },
+  "[matlab]": {
+    "editor.defaultFormatter": "MathWorks.language-matlab"
+  },
+  "editor.defaultFormatter": "esbenp.prettier-vscode",
+  "editor.formatOnSave": true,
+  "cSpell.enabled": false
+}
