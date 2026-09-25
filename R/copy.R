@@ -52,10 +52,12 @@ copy_imaging_files <- function(
   output_datadir,
   f0 = 1,
   f1 = 0,
+  files_organized_by = c("scan", "participant"),
   organize_files_by = c("participant", "scan"),
   overwrite = FALSE
 ) {
   organize_files_by <- match.arg(organize_files_by)
+  files_organized_by <- match.arg(files_organized_by)
 
   # --- input validation ----------------------------------------------------
   if (!dir.exists(datadir)) {
@@ -75,17 +77,7 @@ copy_imaging_files <- function(
     return(invisible(character(0)))
   }
 
-  # --- resolve the [f0, f1] file range --------------------------------------
-  if (f1 == 0) {
-    f1 <- length(files)
-  }
-
-  if (f0 < 1 || f0 > length(files)) {
-    stop("`f0` (", f0, ") is out of range 1:", length(files))
-  }
-  if (f1 < f0 || f1 > length(files)) {
-    stop("`f1` (", f1, ") is out of range ", f0, ":", length(files))
-  }
+  files <- check_file_range(files, by = files_organized_by, f0, f1)
 
   files_df <- tidyr::pivot_wider(
     sort_scans(files),
@@ -93,7 +85,7 @@ copy_imaging_files <- function(
     values_from = "files"
   )
 
-  files_df <- files_df[f0:f1, ]
+  exists <- character(0)
 
   copied <- character(0)
 
@@ -114,6 +106,9 @@ copy_imaging_files <- function(
           basename(files_df[i, n, drop = TRUE])
         )
         for (f in seq_along(files_to)) {
+          if (file.exists(files_to[f])) {
+            exists <- c(exists, files_to[f])
+          }
           if (!file.exists(files_to[f]) || overwrite) {
             ok <- file.copy(
               from = files_from[f],
@@ -141,6 +136,9 @@ copy_imaging_files <- function(
       files_from <- files_df[[s]]
       files_to <- file.path(output_datadir, s, basename(files_df[[s]]))
       for (f in seq_along(files_to)) {
+        if (file.exists(files_to[f])) {
+          exists <- c(exists, files_to[f])
+        }
         if (!file.exists(files_to[f]) || overwrite) {
           ok <- file.copy(
             from = files_from[f],
@@ -153,5 +151,10 @@ copy_imaging_files <- function(
     }
   }
 
-  invisible(copied)
+  invisible(
+    list(
+      files = sort(c(exists, copied)),
+      copied = copied
+    )
+  )
 }

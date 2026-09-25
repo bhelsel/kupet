@@ -10,11 +10,10 @@
 matlab_old_normalization <- function(
   session,
   mri,
-  pet
+  pet,
+  seg_mat
 ) {
   stopifnot(length(mri) == length(pet))
-
-  seg_mat <- list.files(dirname(mri), "seg_sn.mat$", full.names = TRUE)
 
   for (i in seq_along(mri)) {
     cli::cli_inform(

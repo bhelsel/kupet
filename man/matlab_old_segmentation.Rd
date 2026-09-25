@@ -4,15 +4,12 @@
 \alias{matlab_old_segmentation}
 \title{Coregister one or more source images to a reference image}
 \usage{
-matlab_old_segmentation(session, spm_path, sources)
+matlab_old_segmentation(session, sources)
 }
 \arguments{
 \item{session}{A \code{matlab_session}, already set up via \code{matlab_setup_spm()}.}
 
-\item{sources}{Character vector of source image paths to coregister.}
-
-\item{ref}{Character. Path to the reference image, OR a vector the same
-length as \code{sources}.}
+\item{sources}{Character vector of source mri image paths to segment.}
 }
 \value{
 The \code{session}, invisibly, with one log entry per source file.

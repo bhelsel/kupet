@@ -14,43 +14,78 @@
 #'
 #' @export
 
-calculate_center_of_mass <- function(path, write = TRUE) {
-  if (!file.exists(path)) {
-    stop("File not found: ", path)
+get_center_of_mass <- function(
+  datadir,
+  outputdir = NULL,
+  f0 = 1,
+  f1 = 0,
+  write = TRUE
+) {
+  calculate_center_of_mass <- function(nifti) {
+    idx <- which(nifti > mean(nifti[nifti > mean(nifti)]), arr.ind = TRUE)
+    if (nrow(idx) == 0) {
+      stop(
+        "No voxels exceeded the intensity threshold; cannot compute center of mass."
+      )
+    }
+    M <- RNifti::xform(nifti)
+    M[1:3, 4] <- rowSums(M[1:3, ]) * -1
+    com <- as.vector(
+      M[1:3, ] %*% c(mean(idx[, 1]), mean(idx[, 2]), mean(idx[, 3]), 1)
+    )
+
+    Affine <- diag(4)
+    Affine[1:3, 4] <- com
+    M_new <- solve(Affine, M)
+    nifti$srow_x <- M_new[1, ]
+    nifti$srow_y <- M_new[2, ]
+    nifti$srow_z <- M_new[3, ]
+
+    names(com) <- c("X", "Y", "Z")
+
+    return(list(data = nifti, center_of_mass = com))
   }
 
-  VF <- RNifti::readNifti(path)
-
-  m <- mean(VF)
-  avg <- mean(VF[VF > m])
-  idx <- which(VF > avg, arr.ind = TRUE)
-
-  if (nrow(idx) == 0) {
-    stop(
-      "No voxels exceeded the intensity threshold; cannot compute center of mass."
+  if (write & is.null(outputdir)) {
+    cli::cli_abort(
+      "Must provide {.path outputdir} when {.code write = TRUE}"
     )
   }
 
-  x <- mean(idx[, 1])
-  y <- mean(idx[, 2])
-  z <- mean(idx[, 3])
+  files <- list.files(
+    datadir,
+    pattern = "\\.nii(\\.gz)?$",
+    full.names = TRUE,
+    recursive = TRUE
+  )
 
-  M <- RNifti::xform(VF)
+  files <- check_file_range(files, by = "participant", f0, f1)
 
-  M[1:3, 4] <- rowSums(M[1:3, ]) * -1
-  com <- as.vector(M[1:3, ] %*% c(x, y, z, 1))
-
-  Affine <- diag(4)
-  Affine[1:3, 4] <- com
-
-  M_new <- solve(Affine, M)
-  VF$srow_x <- M_new[1, ]
-  VF$srow_y <- M_new[2, ]
-  VF$srow_z <- M_new[3, ]
-
-  if (write) {
-    RNifti::writeNifti(VF, path)
+  if (length(files) > 1) {
+    center_of_mass <- furrr::future_map_dfr(files, \(x) {
+      VF <- RNifti::readNifti(x)
+      center <- calculate_center_of_mass(VF)
+      if (write) {
+        new_x <- sub(datadir, outputdir, x)
+        if (!dir.exists(dirname(new_x))) {
+          dir.create(dirname(new_x), recursive = TRUE)
+        }
+        RNifti::writeNifti(center$data, new_x)
+      }
+      return(center$center_of_mass)
+    })
+  } else {
+    VF <- RNifti::readNifti(files)
+    center <- calculate_center_of_mass(VF)
+    if (write) {
+      new_x <- sub(datadir, outputdir, files)
+      if (!dir.exists(dirname(new_x))) {
+        dir.create(dirname(new_x), recursive = TRUE)
+      }
+      RNifti::writeNifti(center$data, new_x)
+    }
+    center_of_mass <- center$center_of_mass
   }
 
-  return(com)
+  return(data.frame(file = basename(files), center_of_mass))
 }

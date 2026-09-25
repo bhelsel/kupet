@@ -11,7 +11,6 @@ get_centiloid <- function(pet, id) {
     }
   )
 
-  system.file()
   # fmt: skip
   ctx <- as.numeric(fslr::fslstats(pet, opts = sprintf("-k %s -M", masks$CTX$FILE),  verbose = FALSE))
   masks <- masks[names(masks) != "CTX"]

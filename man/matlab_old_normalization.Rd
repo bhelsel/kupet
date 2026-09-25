@@ -4,7 +4,7 @@
 \alias{matlab_old_normalization}
 \title{Coregister one or more source images to a reference image}
 \usage{
-matlab_old_normalization(session, mri, pet)
+matlab_old_normalization(session, mri, pet, seg_mat)
 }
 \arguments{
 \item{session}{A \code{matlab_session}, already set up via \code{matlab_setup_spm()}.}

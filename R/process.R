@@ -1,238 +1,143 @@
 process_centiloid <- function(
-  mode = 1:6,
   datadir,
   outputdir,
-  studyname = c(),
+  steps = 1:6,
+  spm_path = Sys.getenv("SPM_PATH"),
   f0 = 1,
   f1 = 0,
-  configfile,
+  doParallel = TRUE,
   verbose = TRUE,
   ...
 ) {
-  if (length(datadir) == 0) {
-    stop("\nVariable datadir is not specified")
-  }
-  if (length(outputdir) == 0) {
-    stop("\nVariable outputdir is not specified")
-  }
-
-  if (datadir == outputdir || grepl(paste(datadir, "/", sep = ""), outputdir)) {
-    stop(paste0(
-      "\nError: The file path specified by argument outputdir should ",
-      "NOT equal or be a subdirectory of the path specified by argument datadir"
+  if (Sys.getenv("SPM_PATH") == "") {
+    cli::cli_abort(c(
+      "No {.envvar SPM_PATH} detected in your R environment.",
+      "i" = "Run {.code set_spm_path()} to configure SPM.",
+      "i" = "You can also provide the SPM directory manually:",
+      " " = "{.code set_spm_path('/path/to/spm')}"
     ))
   }
 
-  if (!dir.exists(outputdir)) {
-    purrr::walk(
-      file.path(outputdir, c("data", "results")),
-      ~ dir.create(.x, recursive = TRUE)
-    )
-  }
-
-  resultsdir <- file.path(outputdir, "results")
-
-  output_datadir <- file.path(outputdir, "data")
-
-  if (dir.exists(resultsdir)) {
-    subfolders <- c("centered", "coregister", "segmentation", "normalization")
-    purrr::walk(subfolders, \(x) {
-      if (!dir.exists(file.path(resultsdir, x))) {
-        dir.create(file.path(resultsdir, x))
-      }
-    })
-  }
+  steps <- sort(unique(steps))
+  stopifnot(all(steps %in% 1:6))
+  check_dirs(datadir, outputdir)
+  dirs <- create_output_dirs(outputdir)
 
   data_files <- copy_imaging_files(
     datadir = datadir,
-    output_datadir = output_datadir,
+    output_datadir = dirs$data,
     f0 = f0,
     f1 = f1,
-    organize_files_by = "participant",
-    ...
+    files_organized_by = "scan",
+    organize_files_by = "participant"
   )
 
-  # Mode 1: Calculate Center of Mass on PET Images
-  centered_files <- replace_last_data_directory(
-    data_files,
-    to = "results/centered"
-  )
+  output_key <- build_output_directory_key(data_files[["files"]], dirs)
 
-  center_of_mass <- data.frame()
+  if (any(steps %in% 2:5)) {
+    session <- matlab_start_server()
+    on.exit(matlab_close_server(session), add = TRUE) # register immediately
+    session <- matlab_setup_spm(session, Sys.getenv("SPM_PATH"))
+  }
 
-  for (f in seq_along(data_files)) {
-    if (!dir.exists(dirname(centered_files[f]))) {
-      dir.create(dirname(centered_files[f]))
-    }
-    invisible(file.copy(data_files[f], centered_files[f], overwrite = TRUE))
-    com <- calculate_center_of_mass(centered_files[f], write = TRUE)
-    center_of_mass <- rbind(
-      center_of_mass,
-      data.frame(
-        id = basename(centered_files[f]),
-        X = com[1],
-        Y = com[2],
-        Z = com[3]
-      )
+  if (doParallel) {
+    future::plan(future::multisession, workers = future::availableCores() - 1)
+  }
+
+  # Stage 1: Calculate Center of Mass on PET Images
+  if (any(steps == 1)) {
+    center_of_mass <- get_center_of_mass(
+      datadir = dirs$data,
+      f0 = f0,
+      f1 = f1,
+      outputdir = dirs$stages[["centered"]],
+      write = TRUE
     )
   }
 
-  session <- matlab_start_server()
+  # Stage 2: Coregister MRI to Template
+  if (any(steps == 2)) {
+    copy_files(from = output_key$centered_mri, to = output_key$coregister_mri)
 
-  session <- matlab_setup_spm(
-    session,
-    spm_path = "/Users/bhelsel/Documents/MATLAB/spm"
-  )
+    avg152T1 <- file.path(Sys.getenv("SPM_PATH"), "canonical", "avg152T1.nii")
 
-  # Mode 2: Coregister MRI to Template
-  coregister_files <- replace_last_data_directory(
-    data_files,
-    to = "results/coregister"
-  )
-
-  for (f in seq_along(centered_files)) {
-    if (!dir.exists(dirname(coregister_files[f]))) {
-      dir.create(dirname(coregister_files[f]))
-    }
-    invisible(file.copy(
-      centered_files[f],
-      coregister_files[f],
-      overwrite = TRUE
-    ))
+    session <- spm_coregister(
+      session,
+      ref = avg152T1,
+      sources = output_key$coregister_mri
+    )
   }
 
-  coregister_file_types <- purrr::map_chr(
-    coregister_files,
-    ~ identify_modality(.x)
-  )
+  # Stage 3: Coregister PET to MRI
+  if (any(steps == 3)) {
+    copy_files(from = output_key$centered_pet, to = output_key$coregister_pet)
 
-  session <- spm_coregister(
-    session,
-    ref = "/Users/bhelsel/Documents/MATLAB/spm/canonical/avg152T1.nii",
-    sources = coregister_files[coregister_file_types == "MRI"]
-  )
-
-  # Mode 3: Coregister PET to MRI
-
-  session <- spm_coregister(
-    session,
-    ref = coregister_files[coregister_file_types == "MRI"],
-    sources = coregister_files[coregister_file_types == "PET"]
-  )
+    session <- spm_coregister(
+      session,
+      ref = output_key$coregister_mri,
+      sources = output_key$coregister_pet
+    )
+  }
 
   # Mode 4: Apply segmentation to MRI images
+  if (any(steps == 4)) {
+    copy_files(
+      from = output_key$coregister_mri,
+      to = output_key$segmentation_mri
+    )
 
-  segmentation_files <- replace_last_data_directory(
-    data_files,
-    to = "results/segmentation"
-  )
-
-  segment_file_types <- purrr::map_chr(
-    segmentation_files,
-    ~ identify_modality(.x)
-  )
-
-  coregister_mri_files <- coregister_files[coregister_file_types == "MRI"]
-
-  segmentation_mri_files <- segmentation_files[segment_file_types == "MRI"]
-
-  for (f in seq_along(segmentation_mri_files)) {
-    if (!dir.exists(dirname(segmentation_mri_files[f]))) {
-      dir.create(dirname(segmentation_mri_files[f]))
-    }
-    invisible(file.copy(
-      coregister_mri_files[f],
-      segmentation_mri_files[f],
-      overwrite = TRUE
-    ))
+    session <- matlab_old_segmentation(
+      session,
+      sources = output_key$segmentation_mri
+    )
   }
-
-  session <- matlab_old_segmentation(
-    session,
-    spm_path = "/Users/bhelsel/Documents/MATLAB/spm",
-    sources = segmentation_mri_files
-  )
 
   # Mode 5: Apply normalization to MRI and PET images
+  if (any(steps == 5)) {
+    copy_files(
+      from = output_key$coregister_pet,
+      to = output_key$normalization_pet
+    )
 
-  normalized_files <- replace_last_data_directory(
-    data_files,
-    to = "results/normalization"
-  )
+    copy_files(
+      from = output_key$segmentation_mri,
+      to = output_key$normalization_mri
+    )
 
-  normalized_file_types <- purrr::map_chr(
-    normalized_files,
-    ~ identify_modality(.x)
-  )
-
-  normalized_mri_files <- normalized_files[normalized_file_types == "MRI"]
-
-  normalized_pet_files <- normalized_files[normalized_file_types == "PET"]
-
-  coregister_pet_files <- coregister_files[coregister_file_types == "PET"]
-
-  segmentation_mat_files <- list.files(
-    dirname(segmentation_mri_files),
-    pattern = "seg_sn.mat",
-    full.names = TRUE
-  )
-
-  for (f in seq_along(normalized_mri_files)) {
-    if (!dir.exists(dirname(normalized_mri_files[f]))) {
-      dir.create(dirname(normalized_mri_files[f]))
-    }
-
-    invisible(file.copy(
-      segmentation_mri_files[f],
-      normalized_mri_files[f],
-      overwrite = TRUE
-    ))
-
-    invisible(file.copy(
-      segmentation_mat_files[f],
-      file.path(
-        dirname(normalized_mri_files[f]),
-        basename(segmentation_mat_files[f])
-      ),
-      overwrite = TRUE
-    ))
+    session <- matlab_old_normalization(
+      session,
+      mri = output_key$normalization_mri,
+      pet = output_key$normalization_pet,
+      seg_mat = output_key$seg_sn_mat_mri
+    )
   }
-
-  for (f in seq_along(normalized_pet_files)) {
-    if (!dir.exists(dirname(normalized_pet_files[f]))) {
-      dir.create(dirname(normalized_pet_files[f]))
-    }
-
-    invisible(file.copy(
-      coregister_pet_files[f],
-      normalized_pet_files[f],
-      overwrite = TRUE
-    ))
-  }
-
-  session <- matlab_old_normalization(
-    session,
-    mri = normalized_mri_files,
-    pet = normalized_pet_files
-  )
 
   # Mode 6: Calculate Centiloid Values
-
-  ids <- basename(dirname(normalized_pet_files))
-
-  normalized_pet_files <- file.path(
-    dirname(normalized_pet_files),
-    paste0("w", basename(normalized_pet_files))
-  )
-
-  centiloids <- purrr::map2_dfr(
-    normalized_pet_files,
-    ids,
-    ~ get_centiloid(.x, .y)
-  ) |>
-    tidyr::pivot_wider(names_from = MASK, values_from = c(SUVR, CENTILOID))
-
-  on.exit(matlab_close_server(session))
+  if (any(steps == 6)) {
+    centiloids <- furrr::future_map2_dfr(
+      output_key$normalized_pet,
+      output_key$id,
+      ~ get_centiloid(.x, .y)
+    ) |>
+      tidyr::pivot_wider(names_from = MASK, values_from = c(SUVR, CENTILOID))
+  }
 
   return(centiloids)
 }
+
+# datadir <- "/Users/bhelsel/Desktop/Centiloid/GAAIN/AD-100-DATA"
+# outputdir <- "/Users/bhelsel/Desktop/Centiloid/GAAIN/AD-100-PROC"
+# devtools::load_all()
+# process_centiloid(datadir, outputdir, steps = 6)
+
+# datadir <- "/Users/bhelsel/Desktop/Centiloid/GAAIN/YC-0-DATA"
+# outputdir <- "/Users/bhelsel//Desktop/Centiloid/GAAIN/YC-0-PROC"
+# centiloids <- process_centiloid(datadir, outputdir, steps = 6, f0 = 1, f1 = 0)
+
+# undebug(get_centiloid)
+# get_centiloid("/Users/bhelsel/Desktop/Centiloid/GAAIN/YC-0-PROC/results/normalization/YC102/wYC102_PiB_5070.nii", id = "YC102")
+# get_centiloid("/Users/bhelsel/Desktop/Centiloid/GAAIN/YC-0-PROC/results/normalization/YC129/wYC129_PiB_5070.nii", id = "YC129")
+
+#' Next step is to test f0 and f1 and overwrite arguments.
+#' Need to avoid segmentation if overwite is FALSE and there is a seg file as it is an expensive operation
+#' Then, document and push to GitHub as initial version.
