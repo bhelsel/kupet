@@ -12,11 +12,15 @@ get_centiloid <- function(pet, id) {
   )
 
   # fmt: skip
-  ctx <- as.numeric(fslr::fslstats(pet, opts = sprintf("-k %s -M", masks$CTX$FILE),  verbose = FALSE))
+  ctx <- as.numeric(fslr::fslstats(pet, opts = sprintf("-k %s -n -M", masks$CTX$FILE),  verbose = FALSE))
   masks <- masks[names(masks) != "CTX"]
   purrr::imap_dfr(masks, \(x, y) {
     # fmt: skip
-    mask_mean <- as.numeric(fslr::fslstats(pet, opts = sprintf("-k %s -M", x$FILE), verbose = FALSE))
+    mask_mean <- as.numeric(fslr::fslstats(
+      pet,
+      opts = sprintf("-k %s -n -M", x$FILE),
+      verbose = FALSE
+    ))
     AD_100 <- x$AD_100
     YC_0 <- x$YC_0
     SUVR <- ctx / mask_mean
