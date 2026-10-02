@@ -9,6 +9,7 @@ copy_imaging_files(
   output_datadir,
   f0 = 1,
   f1 = 0,
+  files_organized_by = c("scan", "participant"),
   organize_files_by = c("participant", "scan"),
   overwrite = FALSE
 )

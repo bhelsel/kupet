@@ -151,9 +151,13 @@ copy_imaging_files <- function(
     }
   }
 
+  if (length(exists) == 0 & length(copied) > 0) {
+    exists <- copied
+  }
+
   invisible(
     list(
-      files = sort(c(exists, copied)),
+      files = exists,
       copied = copied
     )
   )

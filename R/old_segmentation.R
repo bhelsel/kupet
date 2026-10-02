@@ -29,6 +29,19 @@ matlab_old_segmentation <- function(
         tpm["csf"]
       )
     )
+
+    seg_sn_files_from <- list.files(
+      dirname(sources[i]),
+      pattern = "_seg(_inv)?_sn.mat$",
+      full.names = TRUE
+    )
+
+    seg_sn_files_to <- file.path(
+      dirname(seg_sn_files_from),
+      sub("^c(_n4)?_", "", basename(seg_sn_files_from))
+    )
+
+    invisible(file.rename(seg_sn_files_from, seg_sn_files_to))
   }
 
   invisible(session)

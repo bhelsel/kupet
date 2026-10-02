@@ -4,7 +4,7 @@
 \alias{spm_coregister}
 \title{Coregister one or more source images to a reference image}
 \usage{
-spm_coregister(session, ref, sources)
+spm_coregister(session, ref, sources, other = NULL)
 }
 \arguments{
 \item{session}{A \code{matlab_session}, already set up via \code{matlab_setup_spm()}.}

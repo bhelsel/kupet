@@ -47,7 +47,7 @@ matlab_start_server <- function(
 #' @param script_path Path to `coregister.m` (its directory is added to the
 #'   MATLAB path).
 matlab_setup_spm <- function(session, spm_path) {
-  scripts_path <- system.file("matlab", package = "kuadrc.pet")
+  scripts_path <- system.file("matlab", package = "kupet")
 
   matlab_step(
     session,

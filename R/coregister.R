@@ -10,12 +10,19 @@
 spm_coregister <- function(
   session,
   ref,
-  sources
+  sources,
+  other = NULL
 ) {
   if (length(ref) == 1) {
     ref <- rep(ref, length(sources))
   }
   stopifnot(length(ref) == length(sources))
+
+  if (!is.null(other)) {
+    stopifnot(length(sources) == length(other))
+  } else {
+    other <- rep("", length(sources))
+  }
 
   for (i in seq_along(sources)) {
     cli::cli_inform(
@@ -24,7 +31,12 @@ spm_coregister <- function(
     session <- matlab_step(
       session,
       sprintf("coregister:%s", basename(sources[i])),
-      sprintf("  coregister('%s', '%s');", ref[i], sources[i])
+      sprintf(
+        "  coregister('%s', '%s', '%s');",
+        ref[i],
+        sources[i],
+        other[i]
+      )
     )
   }
 

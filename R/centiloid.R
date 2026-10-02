@@ -5,7 +5,7 @@ get_centiloid <- function(pet, id) {
     \(mask) {
       mask$FILE <- system.file(
         file.path("voi", mask$FILE),
-        package = "kuadrc.pet"
+        package = "kupet"
       )
       mask
     }

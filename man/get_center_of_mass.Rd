@@ -4,7 +4,15 @@
 \alias{get_center_of_mass}
 \title{Set a NIfTI image's origin to its center of mass}
 \usage{
-get_center_of_mass(datadir, outputdir = NULL, f0 = 1, f1 = 0, write = TRUE)
+get_center_of_mass(
+  datadir,
+  metadir = NULL,
+  outputdir = NULL,
+  f0 = 1,
+  f1 = 0,
+  overwrite = FALSE,
+  write = TRUE
+)
 }
 \arguments{
 \item{write}{Logical. If \code{TRUE} (default), overwrite \code{path} on disk with

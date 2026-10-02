@@ -30,6 +30,19 @@ matlab_old_normalization <- function(
         pet[i]
       )
     )
+
+    normalized_files_from <- list.files(
+      dirname(mri[i]),
+      pattern = "^wc_",
+      full.names = TRUE
+    )
+
+    normalized_files_to <- file.path(
+      dirname(normalized_files_from),
+      sub("^wc(_n4)?_", "w", basename(normalized_files_from))
+    )
+
+    invisible(file.rename(normalized_files_from, normalized_files_to))
   }
 
   invisible(session)

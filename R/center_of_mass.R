@@ -15,10 +15,12 @@
 #' @export
 
 get_center_of_mass <- function(
-  datadir,
+  files,
+  metadir = NULL,
   outputdir = NULL,
   f0 = 1,
   f1 = 0,
+  overwrite = FALSE,
   write = TRUE
 ) {
   calculate_center_of_mass <- function(nifti) {
@@ -52,40 +54,25 @@ get_center_of_mass <- function(
     )
   }
 
-  files <- list.files(
-    datadir,
-    pattern = "\\.nii(\\.gz)?$",
-    full.names = TRUE,
-    recursive = TRUE
-  )
-
   files <- check_file_range(files, by = "participant", f0, f1)
 
-  if (length(files) > 1) {
-    center_of_mass <- furrr::future_map_dfr(files, \(x) {
-      VF <- RNifti::readNifti(x)
-      center <- calculate_center_of_mass(VF)
-      if (write) {
-        new_x <- sub(datadir, outputdir, x)
-        if (!dir.exists(dirname(new_x))) {
-          dir.create(dirname(new_x), recursive = TRUE)
-        }
-        RNifti::writeNifti(center$data, new_x)
-      }
-      return(center$center_of_mass)
-    })
-  } else {
-    VF <- RNifti::readNifti(files)
+  center_of_mass <- furrr::future_map_dfr(files, \(x) {
+    VF <- RNifti::readNifti(x)
     center <- calculate_center_of_mass(VF)
     if (write) {
-      new_x <- sub(datadir, outputdir, files)
-      if (!dir.exists(dirname(new_x))) {
-        dir.create(dirname(new_x), recursive = TRUE)
-      }
-      RNifti::writeNifti(center$data, new_x)
+      RNifti::writeNifti(center$data, x)
     }
-    center_of_mass <- center$center_of_mass
+    return(center$center_of_mass)
+  })
+
+  center_of_mass <- data.frame(file = basename(files), center_of_mass)
+
+  if (write) {
+    com_file <- file.path(metadir, "center_of_mass.csv")
+    if (!file.exists(com_file) || overwrite) {
+      utils::write.csv(center_of_mass, file = com_file, row.names = FALSE)
+    }
   }
 
-  return(data.frame(file = basename(files), center_of_mass))
+  return(center_of_mass)
 }

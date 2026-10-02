@@ -111,13 +111,12 @@ create_output_dirs <- function(outputdir) {
   outputdir <- normalizePath(outputdir, mustWork = FALSE)
   dirs <- list(
     data = file.path(outputdir, "data"),
+    meta = file.path(outputdir, "meta"),
     results = file.path(outputdir, "results")
   )
-  stages <- c("centered", "coregister", "segmentation", "normalization")
-  dirs$stages <- stats::setNames(file.path(dirs$results, stages), stages)
 
   purrr::walk(
-    c(dirs$data, dirs$results, dirs$stages),
+    c(dirs$data, dirs$meta, dirs$results),
     dir.create,
     recursive = TRUE,
     showWarnings = FALSE
@@ -159,7 +158,7 @@ check_file_range <- function(
   files <- switch(
     by,
     participant = purrr::list_c(
-      purrr::map(directories, \(x) {
+      purrr::map(directories[f0:f1], \(x) {
         f <- list.files(x, full.names = TRUE)
       })
     ),
@@ -175,13 +174,17 @@ check_file_range <- function(
 }
 
 
-build_output_directory_key <- function(data_files, dirs) {
+build_output_directory_key <- function(
+  data_files,
+  dirs,
+  n4_bias_correction,
+  smoothing
+) {
   if (length(data_files) == 0) {
     stop("No imaging files found in ", dirs$data, call. = FALSE)
   }
 
   raw <- normalizePath(data_files, mustWork = TRUE)
-  stage <- function(name) dirs$stages[[name]]
 
   output_directory_key <- tibble::tibble(
     id = basename(dirname(raw)), # files are organized by participant
@@ -190,32 +193,50 @@ build_output_directory_key <- function(data_files, dirs) {
     raw = raw
   ) |>
     dplyr::mutate(
-      centered = file.path(stage("centered"), id, filename),
-      coregister = file.path(stage("coregister"), id, filename),
-      segmentation = dplyr::if_else(
-        modality == "MRI",
-        file.path(stage("segmentation"), id, filename),
-        NA_character_
-      ),
-      # derived from the MRI name instead of globbing the directory
-      seg_sn_mat = dplyr::if_else(
-        modality == "MRI",
-        sub("\\.nii(\\.gz)?$", "_seg_sn.mat", segmentation),
-        NA_character_
-      ),
-      normalization = file.path(stage("normalization"), id, filename),
+      centered = file.path(dirs$results, id, filename),
+      # fmt: skip
+      n4_bias_corrected =  file.path(dirs$results, id, sprintf("n4_%s", filename)),
+      coregister = file.path(dirs$results, id, sprintf("c_%s", filename)),
+      # fmt: skip
+      seg_sn_mat = sub("c(_n4)?_", "", sub("\\.nii(\\.gz)?$", "_seg_sn.mat", coregister)),
+      # fmt: skip
+      seg_inv_sn_mat = sub("c(_n4)?_", "", sub("\\.nii(\\.gz)?$", "_seg_inv_sn.mat", coregister)),
+      # fmt: skip
+      normalization = file.path(dirs$results, id, sprintf("normalized_%s", filename)),
       # SPM prepends "w" to normalized outputs
-      normalized = file.path(dirname(normalization), paste0("w", filename))
+      normalized = file.path(dirname(normalization), paste0("w", filename)),
     )
 
   validate_output_directory_key(output_directory_key)
 
-  tidyr::pivot_wider(
+  output_key <- tidyr::pivot_wider(
     output_directory_key,
     names_from = modality,
     values_from = filename:normalized,
     names_repair = \(x) tolower(x)
   )
+
+  if (n4_bias_correction) {
+    output_key$coregister_mri <- file.path(
+      dirs$results,
+      output_key$id,
+      sprintf("c_n4_%s", output_key$filename_mri)
+    )
+  }
+
+  if (smoothing) {
+    output_key$smoothed_pet <- file.path(
+      dirs$results,
+      output_key$id,
+      sprintf("s%s", output_key$filename_pet)
+    )
+  }
+
+  output_key$seg_sn_mat_pet <- NULL
+  output_key$seg_inv_sn_mat_pet <- NULL
+  output_key$n4_bias_corrected_pet <- NULL
+
+  return(output_key)
 }
 
 validate_output_directory_key <- function(manifest) {
