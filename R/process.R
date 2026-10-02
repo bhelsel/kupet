@@ -67,6 +67,12 @@ process_centiloid <- function(
       overwrite = overwrite
     )
 
+    copy_files(
+      from = output_key$raw_pet,
+      to = output_key$centered_pet,
+      overwrite = overwrite
+    )
+
     if (n4_bias_correction) {
       file.rename(
         from = output_key$centered_mri,
@@ -77,18 +83,20 @@ process_centiloid <- function(
         output_key$n4_bias_corrected_mri,
         overwrite = overwrite
       )
+
+      output_key$centered_mri <- output_key$n4_bias_corrected_mri
     }
 
-    if (!n4_bias_correction & file.exists(output_key$n4_bias_corrected_mri)) {
-      invisible(file.remove(output_key$n4_bias_corrected_mri))
+    if (!n4_bias_correction) {
+      purrr::walk(output_key$n4_bias_corrected_mri, \(x) {
+        if (file.exists(x)) {
+          invisible(file.remove(x))
+        }
+      })
     }
 
     center_of_mass <- get_center_of_mass(
-      files = if (n4_bias_correction) {
-        output_key$n4_bias_corrected_mri
-      } else {
-        output_key$centered_mri
-      },
+      files = c(output_key$centered_mri, output_key$centered_pet),
       metadir = dirs$meta,
       f0 = f0,
       f1 = f1,
@@ -101,13 +109,16 @@ process_centiloid <- function(
   # Stage 2: Coregister MRI to Template
   if (any(steps == 2)) {
     if (n4_bias_correction) {
-      mri_files_to_coregister <- output_key$n4_bias_corrected_mri
-    } else {
-      mri_files_to_coregister <- output_key$centered_mri
+      old_coregistration_files <- sub("n4_", "", output_key$coregister_mri)
+      purrr::walk(old_coregistration_files, \(x) {
+        if (file.exists(x)) {
+          invisible(file.remove(x))
+        }
+      })
     }
 
     copy_files(
-      from = mri_files_to_coregister,
+      from = output_key$centered_mri,
       to = output_key$coregister_mri,
       overwrite = overwrite
     )

@@ -4,7 +4,7 @@ pet_files = strcat(strsplit(pet_files, '|'), ',1');
 
 matlabbatch = {};
 
-matlabbatch{1}.spm.spatial.realign.write.data = {pet_files'};
+matlabbatch{1}.spm.spatial.realign.write.data = pet_files(:);
 
 matlabbatch{1}.spm.spatial.realign.write.roptions.which = [2 0];
 

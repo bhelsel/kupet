@@ -54,8 +54,6 @@ get_center_of_mass <- function(
     )
   }
 
-  files <- check_file_range(files, by = "participant", f0, f1)
-
   center_of_mass <- furrr::future_map_dfr(files, \(x) {
     VF <- RNifti::readNifti(x)
     center <- calculate_center_of_mass(VF)

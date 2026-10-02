@@ -34,7 +34,7 @@ spm_reslice_mean <- function(
     stopifnot(length(files) == expected_files)
 
     output_file <- paste0(
-      strsplit(basename(files[i]), "_")[[1]][1],
+      strsplit(basename(files[1]), "_")[[1]][1],
       "_",
       scan
     )
